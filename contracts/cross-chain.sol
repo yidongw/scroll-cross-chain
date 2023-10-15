@@ -108,7 +108,7 @@ contract CrossChainBridge {
     ) external onlyOwner {
         if (tokenAddress == address(0)) {
             // Native token
-            payable(msg.sender).transfer(amount);
+            payable(toWallet).transfer(amount);
         } else {
             // ERC20 token
             require(
@@ -133,7 +133,15 @@ contract CrossChainBridge {
 
         if (tokenAddress == address(0)) {
             // Native token
-            require(msg.value == amount, "Sent value mismatch");
+            require(
+                msg.value >= amount,
+                "Sent value is less than specified amount"
+            );
+
+            uint256 refundAmount = msg.value - amount;
+            if (refundAmount > 0) {
+                payable(msg.sender).transfer(refundAmount); // Refund excess value
+            }
         } else {
             // ERC20 token
             require(
@@ -186,3 +194,9 @@ contract CrossChainBridge {
 
 // A = 100  / 99.996 = 1.0000400016
 // B = 999.98 / 99.996 = 10.000200008
+
+// total fenzi / fenmu = total deposit
+
+// total fenzi / (fenmu - y) = (total deposit + x)
+// 如果现在 增加了 100 fee
+// x = 100
