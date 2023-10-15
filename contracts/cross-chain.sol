@@ -13,9 +13,10 @@ interface IERC20 {
 
 contract CrossChainBridge {
     address public owner;
+    address public messenger;
     uint256 public ratio = 50;
     uint256 public gasPrice = 0;
-    uint256 public feesPercentage = 10;
+    uint256 public feesPercentage = 10; // 0.10%
 
     mapping(address => uint256) public deposits;
 
@@ -43,16 +44,28 @@ contract CrossChainBridge {
         _;
     }
 
+    modifier onlyMessenger() {
+        require(
+            msg.sender == messenger || msg.sender == owner,
+            "Not the messenger or owner"
+        );
+        _;
+    }
+
     constructor() {
         owner = msg.sender;
         // Default values can be set here if needed
     }
 
-    function setRatio(uint256 _ratio) external onlyOwner {
+    function setMessenger(address _messenger) external onlyOwner {
+        messenger = _messenger;
+    }
+
+    function setRatio(uint256 _ratio) external onlyMessenger {
         ratio = _ratio;
     }
 
-    function setGasPrice(uint256 _gasPrice) external onlyOwner {
+    function setGasPrice(uint256 _gasPrice) external onlyMessenger {
         gasPrice = _gasPrice;
     }
 
@@ -105,7 +118,7 @@ contract CrossChainBridge {
         address tokenAddress,
         address toWallet,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyMessenger {
         if (tokenAddress == address(0)) {
             // Native token
             payable(toWallet).transfer(amount);
