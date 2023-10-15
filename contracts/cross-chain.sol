@@ -17,8 +17,11 @@ contract CrossChainBridge {
     uint256 public ratio = 50;
     uint256 public gasPrice = 0;
     uint256 public feesPercentage = 10; // 0.10%
+    mapping(address => uint256) denominators;
+    mapping(address => uint256) totalNumurators;
+    mapping(address => uint256) totalDeposits;
 
-    mapping(address => uint256) public deposits;
+    mapping(address => mapping(address => uint256)) public deposits;
 
     event CrossChainTransferIn(
         uint256 chainId,
@@ -36,8 +39,16 @@ contract CrossChainBridge {
         uint256 amount
     );
 
-    event Deposit(address indexed depositer, uint256 amount);
-    event Withdraw(address indexed caller, uint256 amount);
+    event Deposit(
+        address indexed depositer,
+        address indexed tokenAddress,
+        uint256 amount
+    );
+    event Withdraw(
+        address indexed caller,
+        address indexed tokenAddress,
+        uint256 amount
+    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not the contract owner");
@@ -99,9 +110,27 @@ contract CrossChainBridge {
         if (tokenAddress == address(0)) {
             // Native token
             require(msg.value == amount, "Sent value mismatch");
+        } else {
+            // erc20 token
+            require(
+                IERC20(tokenAddress).transferFrom(
+                    msg.sender,
+                    address(this),
+                    amount
+                ),
+                "Transfer failed"
+            );
         }
 
         // Fees distribution logic here...
+        uint256 y = calculateY(
+            fees,
+            denominators[tokenAddress],
+            totalNumurators[tokenAddress],
+            totalDeposits[tokenAddress]
+        );
+        denominators[tokenAddress] -= y;
+        totalNumurators[tokenAddress] += fees;
 
         emit CrossChainTransferIn(
             chainId,
@@ -130,8 +159,6 @@ contract CrossChainBridge {
             );
         }
 
-        // Fees distribution logic here...
-
         emit CrossChainTransferOut(
             originTxHash,
             originChainId,
@@ -142,7 +169,14 @@ contract CrossChainBridge {
     }
 
     function deposit(address tokenAddress, uint256 amount) external payable {
-        deposits[msg.sender] += amount;
+        // initialize
+        if (denominators[tokenAddress] == 0) {
+            denominators[tokenAddress] = ~(uint256(0));
+        }
+
+        deposits[tokenAddress][msg.sender] += (amount *
+            denominators[tokenAddress]);
+        totalNumurators[tokenAddress] += deposits[tokenAddress][msg.sender];
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -167,13 +201,22 @@ contract CrossChainBridge {
             );
         }
 
-        emit Deposit(msg.sender, amount);
+        emit Deposit(msg.sender, tokenAddress, amount);
     }
 
     function withdraw(address tokenAddress, uint256 amount) external {
-        require(deposits[msg.sender] >= amount, "Insufficient deposited funds");
+        // initialize
+        if (denominators[tokenAddress] == 0) {
+            denominators[tokenAddress] = ~(uint256(0));
+        }
 
-        deposits[msg.sender] -= amount;
+        require(
+            deposits[tokenAddress][msg.sender] * denominators[tokenAddress] >=
+                amount,
+            "Insufficient deposited funds"
+        );
+
+        deposits[tokenAddress][msg.sender] -= amount;
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -186,7 +229,21 @@ contract CrossChainBridge {
             );
         }
 
-        emit Withdraw(msg.sender, amount);
+        emit Withdraw(msg.sender, tokenAddress, amount);
+    }
+
+    // total fenzi / fenmu = total deposit
+
+    // total fenzi / (fenmu - y) = (total deposit + x)
+    // fenmu-y = total fenzi / (total deposit + x)
+    // y = fenmu - total fenzi / (total deposit + x)
+    function calculateY(
+        uint256 x,
+        uint256 denominator,
+        uint256 totalNumurator,
+        uint256 totalFee
+    ) public pure returns (uint256) {
+        return (denominator - totalNumurator) / (totalFee + x);
     }
 }
 
