@@ -32,7 +32,7 @@ describe("CrossChainBridge contract", function () {
     it("Should not allow non-owner to set the ratio", async function () {
       const { bridge, user1 } = await loadFixture(setupFixture);
       await expect(bridge.connect(user1).setRatio(100)).to.be.revertedWith(
-        "Not the contract owner"
+        "Not the messenger or owner"
       );
     });
 
@@ -45,7 +45,7 @@ describe("CrossChainBridge contract", function () {
     it("Should not allow non-owner to set the gas price", async function () {
       const { bridge, user1 } = await loadFixture(setupFixture);
       await expect(bridge.connect(user1).setGasPrice(200)).to.be.revertedWith(
-        "Not the contract owner"
+        "Not the messenger or owner"
       );
     });
 
