@@ -13,9 +13,9 @@ interface IERC20 {
 
 contract CrossChainBridge {
     address public owner;
-    uint256 public ratio;
-    uint256 public gasPrice;
-    uint256 public feesPercentage;
+    uint256 public ratio = 50;
+    uint256 public gasPrice = 0;
+    uint256 public feesPercentage = 10;
 
     mapping(address => uint256) public deposits;
 
@@ -49,7 +49,6 @@ contract CrossChainBridge {
     }
 
     function setRatio(uint256 _ratio) external onlyOwner {
-        require(_ratio <= 50, "Invalid ratio");
         ratio = _ratio;
     }
 
