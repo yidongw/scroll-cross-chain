@@ -334,6 +334,15 @@ describe("CrossChainBridge contract", function () {
         { value: 400000 }
       );
 
+      // get fee
+      fee = await bridge.getFees(ethers.constants.AddressZero, 400000)
+      console.log("=== fee: ", fee)
+
+      // get new denominator
+      denominator = await bridge.calculateNewDenominator(fee, 400000 * 100, 400400)
+      console.log("=== denominator: ", denominator)
+
+
       // get user1 withdrawable amount. 
       withdrawableAmount1 = await bridge.getWithdrawableDeposit(ethers.constants.AddressZero, user1.address)
       console.log("====user1 withdrawable amount: ", withdrawableAmount1)

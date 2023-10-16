@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -13,8 +12,6 @@ interface IERC20 {
 }
 
 contract CrossChainBridge {
-    using SafeMath for uint256;
-
     address public owner;
     address public messenger;
     uint256 public ratio = 50;
@@ -136,8 +133,8 @@ contract CrossChainBridge {
         // Fees distribution logic here...
         uint256 newDenominator = calculateNewDenominator(
             fees,
-            totalNumerators[tokenAddress], // 100 * 400
-            totalDeposits[tokenAddress] // 100
+            totalNumerators[tokenAddress],
+            totalDeposits[tokenAddress]
         );
         denominators[tokenAddress] = newDenominator;
         totalDeposits[tokenAddress] += fees;
@@ -181,7 +178,7 @@ contract CrossChainBridge {
     function deposit(address tokenAddress, uint256 amount) external payable {
         // initialize
         if (denominators[tokenAddress] == 0) {
-            denominators[tokenAddress] = 100;
+            denominators[tokenAddress] = 100000;
         }
 
         unchecked {
