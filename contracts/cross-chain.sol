@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -11,7 +12,7 @@ interface IERC20 {
     ) external returns (bool);
 }
 
-contract CrossChainBridge {
+contract CrossChainBridge is ReentrancyGuard {
     address public owner;
     address public messenger;
     uint256 public ratio = 50;
@@ -68,6 +69,7 @@ contract CrossChainBridge {
     }
 
     function setMessenger(address _messenger) external onlyOwner {
+        require(_messenger != address(0), "Invalid messenger address");
         messenger = _messenger;
     }
 
@@ -112,23 +114,8 @@ contract CrossChainBridge {
         uint256 chainId,
         address tokenAddress,
         uint256 amount
-    ) external payable {
+    ) external payable nonReentrant {
         uint256 fees = getFees(tokenAddress, amount);
-
-        if (tokenAddress == address(0)) {
-            // Native token
-            require(msg.value == amount, "Sent value mismatch");
-        } else {
-            // erc20 token
-            require(
-                IERC20(tokenAddress).transferFrom(
-                    msg.sender,
-                    address(this),
-                    amount
-                ),
-                "Transfer failed"
-            );
-        }
 
         // Fees distribution logic here...
         uint256 newDenominator = calculateNewDenominator(
@@ -146,6 +133,21 @@ contract CrossChainBridge {
             amount,
             fees
         );
+
+        if (tokenAddress == address(0)) {
+            // Native token
+            require(msg.value == amount, "Sent value mismatch");
+        } else {
+            // erc20 token
+            require(
+                IERC20(tokenAddress).transferFrom(
+                    msg.sender,
+                    address(this),
+                    amount
+                ),
+                "Transfer failed"
+            );
+        }
     }
 
     function crossChainTransferOut(
@@ -175,7 +177,10 @@ contract CrossChainBridge {
         );
     }
 
-    function deposit(address tokenAddress, uint256 amount) external payable {
+    function deposit(
+        address tokenAddress,
+        uint256 amount
+    ) external payable nonReentrant {
         // initialize
         if (denominators[tokenAddress] == 0) {
             denominators[tokenAddress] = 100000;
@@ -219,7 +224,10 @@ contract CrossChainBridge {
         emit Deposit(msg.sender, tokenAddress, amount);
     }
 
-    function withdraw(address tokenAddress, uint256 amount) external {
+    function withdraw(
+        address tokenAddress,
+        uint256 amount
+    ) external nonReentrant {
         require(denominators[tokenAddress] != 0, "No deposits yet");
 
         require(
