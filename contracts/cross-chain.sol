@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -12,16 +13,17 @@ interface IERC20 {
 }
 
 contract CrossChainBridge {
+    using SafeMath for uint256;
+
     address public owner;
     address public messenger;
     uint256 public ratio = 50;
     uint256 public gasPrice = 0;
     uint256 public feesPercentage = 10; // 0.10%
     mapping(address => uint256) denominators;
-    mapping(address => uint256) totalNumurators;
-    mapping(address => uint256) totalDeposits;
-
-    mapping(address => mapping(address => uint256)) public deposits;
+    mapping(address => uint256) totalNumerators;
+    mapping(address => uint256) totalDeposits; // real deposit amount
+    mapping(address => mapping(address => uint256)) public numerators;
 
     event CrossChainTransferIn(
         uint256 chainId,
@@ -100,6 +102,15 @@ contract CrossChainBridge {
         return ((amount * feesPercentage) / 10000) + (gas * gasPrice);
     }
 
+    function getWithdrawableDeposit(
+        address tokenAddress,
+        address walletAddress
+    ) public view returns (uint256) {
+        return
+            numerators[tokenAddress][walletAddress] /
+            denominators[tokenAddress];
+    }
+
     function crossChainTransferIn(
         uint256 chainId,
         address tokenAddress,
@@ -123,14 +134,13 @@ contract CrossChainBridge {
         }
 
         // Fees distribution logic here...
-        uint256 y = calculateY(
+        uint256 newDenominator = calculateNewDenominator(
             fees,
-            denominators[tokenAddress],
-            totalNumurators[tokenAddress],
-            totalDeposits[tokenAddress]
+            totalNumerators[tokenAddress], // 100 * 400
+            totalDeposits[tokenAddress] // 100
         );
-        denominators[tokenAddress] -= y;
-        totalNumurators[tokenAddress] += fees;
+        denominators[tokenAddress] = newDenominator;
+        totalDeposits[tokenAddress] += fees;
 
         emit CrossChainTransferIn(
             chainId,
@@ -171,12 +181,20 @@ contract CrossChainBridge {
     function deposit(address tokenAddress, uint256 amount) external payable {
         // initialize
         if (denominators[tokenAddress] == 0) {
-            denominators[tokenAddress] = ~(uint256(0));
+            denominators[tokenAddress] = 100;
         }
 
-        deposits[tokenAddress][msg.sender] += (amount *
-            denominators[tokenAddress]);
-        totalNumurators[tokenAddress] += deposits[tokenAddress][msg.sender];
+        unchecked {
+            numerators[tokenAddress][msg.sender] +=
+                amount *
+                denominators[tokenAddress];
+
+            totalNumerators[tokenAddress] +=
+                amount *
+                denominators[tokenAddress];
+
+            totalDeposits[tokenAddress] += amount;
+        }
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -205,18 +223,14 @@ contract CrossChainBridge {
     }
 
     function withdraw(address tokenAddress, uint256 amount) external {
-        // initialize
-        if (denominators[tokenAddress] == 0) {
-            denominators[tokenAddress] = ~(uint256(0));
-        }
+        require(denominators[tokenAddress] != 0, "No deposits yet");
 
         require(
-            deposits[tokenAddress][msg.sender] * denominators[tokenAddress] >=
-                amount,
+            getWithdrawableDeposit(tokenAddress, msg.sender) >= amount,
             "Insufficient deposited funds"
         );
 
-        deposits[tokenAddress][msg.sender] -= amount;
+        numerators[tokenAddress][msg.sender] -= amount;
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -237,13 +251,12 @@ contract CrossChainBridge {
     // total fenzi / (fenmu - y) = (total deposit + x)
     // fenmu-y = total fenzi / (total deposit + x)
     // y = fenmu - total fenzi / (total deposit + x)
-    function calculateY(
-        uint256 x,
-        uint256 denominator,
+    function calculateNewDenominator(
+        uint256 newFees,
         uint256 totalNumurator,
-        uint256 totalFee
+        uint256 totalDeposit
     ) public pure returns (uint256) {
-        return (denominator - totalNumurator) / (totalFee + x);
+        return totalNumurator / (totalDeposit + newFees);
     }
 }
 

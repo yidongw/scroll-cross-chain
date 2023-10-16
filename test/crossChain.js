@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const assert = require("assert");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { ethers } = require("hardhat");
 
 describe("CrossChainBridge contract", function () {
   async function setupFixture() {
@@ -308,6 +309,39 @@ describe("CrossChainBridge contract", function () {
       );
     });
   });
+
+  describe("Deposit fee calculation", function () {
+
+    it("Should calculate the correct withdrawable deposit amount", async function () {
+      const { bridge, user1 } = await loadFixture(setupFixture);
+  
+      // user 1 deposit amount = 400000
+      await bridge.connect(user1).deposit(ethers.constants.AddressZero, 400000, {
+        value: 400000,
+      });
+      
+  
+      // now user1's withdrawable deposit amount should be 400000, cuz there's no swap yet
+      withdrawableAmount = await bridge.getWithdrawableDeposit(ethers.constants.AddressZero, user1.address)
+      console.log("====user1 withdrawable amount: ", withdrawableAmount)
+      assert.equal(withdrawableAmount, 400000)
+      
+      // user 1 call crossChainTransferIn to swap 400 , with msg.value = 400
+      await bridge.connect(user1).crossChainTransferIn(
+        12345, // Arbitrary chainId for this test
+        ethers.constants.AddressZero,
+        400000,
+        { value: 400000 }
+      );
+
+      // get user1 withdrawable amount. 
+      withdrawableAmount1 = await bridge.getWithdrawableDeposit(ethers.constants.AddressZero, user1.address)
+      console.log("====user1 withdrawable amount: ", withdrawableAmount1)
+  
+      // // user 1 call withdraw
+  
+    });
+  })
 
   // Continue with more tests...
 });
