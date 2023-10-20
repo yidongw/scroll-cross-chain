@@ -1,0 +1,8 @@
+// scroll
+export const CONTRACT_ADDRESS = "0xc8EE279fAA4f410cb3b290cFD4c14b5d6d5F5Bea"
+
+// sepolia
+export const SEPOLIA_CONTRACT_ADDRESS = "0xc8EE279fAA4f410cb3b290cFD4c14b5d6d5F5Bea"
+
+// base
+export const BASE_CONTRACT_ADDRESS = "0xc8EE279fAA4f410cb3b290cFD4c14b5d6d5F5Bea"
