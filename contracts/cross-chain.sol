@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -11,14 +12,16 @@ interface IERC20 {
     ) external returns (bool);
 }
 
-contract CrossChainBridge {
+contract CrossChainBridge is ReentrancyGuard {
     address public owner;
     address public messenger;
     uint256 public ratio = 50;
     uint256 public gasPrice = 0;
     uint256 public feesPercentage = 10; // 0.10%
-
-    mapping(address => uint256) public deposits;
+    mapping(address => uint256) denominators;
+    mapping(address => uint256) totalNumerators;
+    mapping(address => uint256) totalDeposits; // real deposit amount
+    mapping(address => mapping(address => uint256)) public numerators;
 
     event CrossChainTransferIn(
         uint256 chainId,
@@ -36,8 +39,16 @@ contract CrossChainBridge {
         uint256 amount
     );
 
-    event Deposit(address indexed depositer, uint256 amount);
-    event Withdraw(address indexed caller, uint256 amount);
+    event Deposit(
+        address indexed depositer,
+        address indexed tokenAddress,
+        uint256 amount
+    );
+    event Withdraw(
+        address indexed caller,
+        address indexed tokenAddress,
+        uint256 amount
+    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not the contract owner");
@@ -58,6 +69,7 @@ contract CrossChainBridge {
     }
 
     function setMessenger(address _messenger) external onlyOwner {
+        require(_messenger != address(0), "Invalid messenger address");
         messenger = _messenger;
     }
 
@@ -89,19 +101,30 @@ contract CrossChainBridge {
         return ((amount * feesPercentage) / 10000) + (gas * gasPrice);
     }
 
+    function getWithdrawableDeposit(
+        address tokenAddress,
+        address walletAddress
+    ) public view returns (uint256) {
+        return
+            numerators[tokenAddress][walletAddress] /
+            denominators[tokenAddress];
+    }
+
     function crossChainTransferIn(
         uint256 chainId,
         address tokenAddress,
         uint256 amount
-    ) external payable {
+    ) external payable nonReentrant {
         uint256 fees = getFees(tokenAddress, amount);
 
-        if (tokenAddress == address(0)) {
-            // Native token
-            require(msg.value == amount, "Sent value mismatch");
-        }
-
         // Fees distribution logic here...
+        uint256 newDenominator = calculateNewDenominator(
+            fees,
+            totalNumerators[tokenAddress],
+            totalDeposits[tokenAddress]
+        );
+        denominators[tokenAddress] = newDenominator;
+        totalDeposits[tokenAddress] += fees;
 
         emit CrossChainTransferIn(
             chainId,
@@ -110,6 +133,21 @@ contract CrossChainBridge {
             amount,
             fees
         );
+
+        if (tokenAddress == address(0)) {
+            // Native token
+            require(msg.value == amount, "Sent value mismatch");
+        } else {
+            // erc20 token
+            require(
+                IERC20(tokenAddress).transferFrom(
+                    msg.sender,
+                    address(this),
+                    amount
+                ),
+                "Transfer failed"
+            );
+        }
     }
 
     function crossChainTransferOut(
@@ -130,8 +168,6 @@ contract CrossChainBridge {
             );
         }
 
-        // Fees distribution logic here...
-
         emit CrossChainTransferOut(
             originTxHash,
             originChainId,
@@ -141,8 +177,26 @@ contract CrossChainBridge {
         );
     }
 
-    function deposit(address tokenAddress, uint256 amount) external payable {
-        deposits[msg.sender] += amount;
+    function deposit(
+        address tokenAddress,
+        uint256 amount
+    ) external payable nonReentrant {
+        // initialize
+        if (denominators[tokenAddress] == 0) {
+            denominators[tokenAddress] = 100000;
+        }
+
+        unchecked {
+            numerators[tokenAddress][msg.sender] +=
+                amount *
+                denominators[tokenAddress];
+
+            totalNumerators[tokenAddress] +=
+                amount *
+                denominators[tokenAddress];
+
+            totalDeposits[tokenAddress] += amount;
+        }
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -167,13 +221,21 @@ contract CrossChainBridge {
             );
         }
 
-        emit Deposit(msg.sender, amount);
+        emit Deposit(msg.sender, tokenAddress, amount);
     }
 
-    function withdraw(address tokenAddress, uint256 amount) external {
-        require(deposits[msg.sender] >= amount, "Insufficient deposited funds");
+    function withdraw(
+        address tokenAddress,
+        uint256 amount
+    ) external nonReentrant {
+        require(denominators[tokenAddress] != 0, "No deposits yet");
 
-        deposits[msg.sender] -= amount;
+        require(
+            getWithdrawableDeposit(tokenAddress, msg.sender) >= amount,
+            "Insufficient deposited funds"
+        );
+
+        numerators[tokenAddress][msg.sender] -= amount;
 
         if (tokenAddress == address(0)) {
             // Native token
@@ -186,7 +248,20 @@ contract CrossChainBridge {
             );
         }
 
-        emit Withdraw(msg.sender, amount);
+        emit Withdraw(msg.sender, tokenAddress, amount);
+    }
+
+    // total fenzi / fenmu = total deposit
+
+    // total fenzi / (fenmu - y) = (total deposit + x)
+    // fenmu-y = total fenzi / (total deposit + x)
+    // y = fenmu - total fenzi / (total deposit + x)
+    function calculateNewDenominator(
+        uint256 newFees,
+        uint256 totalNumurator,
+        uint256 totalDeposit
+    ) public pure returns (uint256) {
+        return totalNumurator / (totalDeposit + newFees);
     }
 }
 
